@@ -160,7 +160,7 @@ app.post("/balances/deposit/:userId", getProfile, async (req, res) => {
 });
 
 // 1. **_GET_** `/admin/best-profession?start=<date>&end=<date>` - Returns the profession that earned the most money (sum of jobs paid) for any contactor that worked in the query time range.
-app.get("/admin/best-profession", getProfile, async (req, res) => {
+app.get("/admin/best-profession", async (req, res) => {
   const { start, end } = req.query;
   const { Profile } = req.app.get("models");
 
@@ -187,4 +187,36 @@ app.get("/admin/best-profession", getProfile, async (req, res) => {
 
   if (!bestProfession) return res.status(404).end();
   res.json(bestProfession);
+});
+
+// 1. **_GET_** `/admin/best-clients?start=<date>&end=<date>&limit=<integer>` - returns the clients the paid the most for jobs in the query time period. limit query parameter should be applied, default limit is 2.
+app.get("/admin/best-clients", async (req, res) => {
+  const { start, end, limit = 2 } = req.query;
+  const { Profile } = req.app.get("models");
+
+  const bestClients = await Profile.findAll({
+    attributes: [
+      "id",
+      [Sequelize.literal("CONCAT(firstName, ' ', lastName)"), "fullName"],
+      [
+        Sequelize.literal(`
+          (SELECT SUM(j.price)
+           FROM Jobs j
+           INNER JOIN Contracts c ON c.id = j.ContractId
+           WHERE c.ClientId = Profile.id
+             AND j.paid = 1
+             AND j.paymentDate BETWEEN '${start}' AND '${end}'
+          )
+        `),
+        "paid",
+      ],
+    ],
+    group: ["Profile.id"],
+    order: [[Sequelize.literal("paid"), "DESC"]],
+    limit: parseInt(limit),
+    having: Sequelize.literal("paid IS NOT NULL"),
+  });
+
+  if (!bestClients.length) return res.status(404).end();
+  res.json(bestClients);
 });
