@@ -158,3 +158,33 @@ app.post("/balances/deposit/:userId", getProfile, async (req, res) => {
 
   res.json({ message: "Deposit successful" });
 });
+
+// 1. **_GET_** `/admin/best-profession?start=<date>&end=<date>` - Returns the profession that earned the most money (sum of jobs paid) for any contactor that worked in the query time range.
+app.get("/admin/best-profession", getProfile, async (req, res) => {
+  const { start, end } = req.query;
+  const { Profile } = req.app.get("models");
+
+  const bestProfession = await Profile.findOne({
+    attributes: [
+      "profession",
+      [
+        Sequelize.literal(`
+          (SELECT SUM(j.price)
+           FROM Jobs j
+           INNER JOIN Contracts c ON c.id = j.ContractId
+           WHERE c.ContractorId = Profile.id
+             AND j.paid = 1
+             AND j.paymentDate BETWEEN '${start}' AND '${end}'
+          )
+        `),
+        "total_earned",
+      ],
+    ],
+    group: ["profession"],
+    order: [[sequelize.literal("total_earned"), "DESC"]],
+    having: sequelize.literal("total_earned IS NOT NULL"),
+  });
+
+  if (!bestProfession) return res.status(404).end();
+  res.json(bestProfession);
+});
