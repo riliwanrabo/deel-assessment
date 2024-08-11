@@ -53,7 +53,11 @@ app.get("/jobs/unpaid", getProfile, async (req, res) => {
   const profileId = req.profile?.id;
 
   const jobs = await Job.findAll({
-    where: { paid: false },
+    where: {
+      paid: {
+        [Sequelize.Op.not]: true,
+      },
+    },
     include: [
       {
         model: Contract,
@@ -112,4 +116,45 @@ app.post("/jobs/:job_id/pay", getProfile, async (req, res) => {
   });
 
   res.json({ message: "Payment successful" });
+});
+
+// 1. **_POST_** `/balances/deposit/:userId` - Deposits money into the the the balance of a client, a client can't deposit more than 25% his total of jobs to pay. (at the deposit moment)
+app.post("/balances/deposit/:userId", getProfile, async (req, res) => {
+  const { Profile, Job, Contract } = res.app.get("models");
+  const { userId } = req.params;
+  const { amount } = req.body;
+
+  // get total unpaid
+  const totalUnpaid = await Job.sum("price", {
+    where: {
+      paid: {
+        [Sequelize.Op.not]: true,
+      },
+    },
+    include: {
+      model: Contract,
+      where: {
+        ClientId: userId,
+        status: "in_progress",
+      },
+    },
+  });
+
+  console.log("totalunpaid", totalUnpaid);
+
+  const cappedDeposit = totalUnpaid * 0.25;
+
+  if (amount > cappedDeposit)
+    return res
+      .status(400)
+      .json({ message: `Maximum deposit is ${cappedDeposit}` });
+
+  await sequelize.transaction(async (transaction) => {
+    await req.profile.update(
+      { balance: req.profile.balance + amount },
+      { transaction }
+    );
+  });
+
+  res.json({ message: "Deposit successful" });
 });

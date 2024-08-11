@@ -30,7 +30,6 @@ Profile.init(
   {
     sequelize,
     modelName: "Profile",
-    version: true,
   }
 );
 
